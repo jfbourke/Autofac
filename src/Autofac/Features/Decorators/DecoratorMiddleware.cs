@@ -103,6 +103,25 @@ internal class DecoratorMiddleware : IResolveMiddleware
             resolveParameters[idx++] = contextParameter;
         }
 
+        // add parameters for all registered services of this component, excluding context.Service
+        if (context.Registration.Services.Count() > 1)
+        {
+            var parms = new List<Parameter>();
+            foreach (var svc in context.Registration.Services)
+            {
+                if (svc is TypedService service && service.ServiceType != serviceType)
+                {
+                    parms.Add(new TypedParameter(service.ServiceType, context.DecoratorContext.CurrentInstance));
+                }
+            }
+
+            if (parms.Count > 0)
+            {
+                parms.AddRange(resolveParameters);
+                resolveParameters = parms.ToArray();
+            }
+        }
+
         // We're going to define a service registration that does not contain any service
         // pipeline additions.
         // Adding a service pipeline middleware to a decorator service is not valid anyway.

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Autofac Project. All rights reserved.
 // Licensed under the MIT License. See LICENSE in the project root for license information.
 
+using System.Diagnostics;
 using Autofac.Core;
 using Autofac.Diagnostics;
 using Autofac.Features.Decorators;
@@ -862,6 +863,46 @@ public class OpenGenericDecoratorTests
         var instance = container.Resolve<ICommandHandler<CreateLocation>>();
 
         Assert.IsType<TransactionalCommandHandlerDecorator<CreateLocation>>(instance);
+    }
+
+    [Fact]
+    public void ResolvesMultipleDecoratedServicesWhenResolvedByOtherServices()
+    {
+        /*
+         * Issue appears to be occuring when resolving DecoratorA; the decorated instance is of IService and the
+         * default constructor expects IDecoratedService which do not match (==) so autowiring picks first match
+         * */
+
+        var builder = new ContainerBuilder();
+        builder.RegisterGeneric(typeof(ImplementorA<>)).As(typeof(IDecoratedService<>)).As(typeof(IService<>));
+        builder.RegisterGeneric(typeof(ImplementorB<>)).As(typeof(IDecoratedService<>)).As(typeof(IService<>));
+        builder.RegisterGenericDecorator(typeof(DecoratorA<>), typeof(IService<>));
+        var container = builder.Build();
+
+        var tracer = new DefaultDiagnosticTracer();
+        tracer.OperationCompleted += (sender, args) =>
+        {
+            _outputHelper.WriteLine(args.TraceContent);
+        };
+
+        container.SubscribeToDiagnostics(tracer);
+
+        var services = container.Resolve<IEnumerable<IService<int>>>();
+
+        Assert.Collection(
+            services,
+            s =>
+            {
+                var ds = s as IDecoratedService<int>;
+                Assert.IsType<DecoratorA<int>>(ds);
+                Assert.IsType<ImplementorA<int>>(ds.Decorated);
+            },
+            s =>
+            {
+                var ds = s as IDecoratedService<int>;
+                Assert.IsType<DecoratorA<int>>(ds);
+                Assert.IsType<ImplementorB<int>>(ds.Decorated);
+            });
     }
 
     public interface ICommandHandler<T>
